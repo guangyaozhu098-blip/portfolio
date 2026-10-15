@@ -1,0 +1,54 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <list>
+          <option value="aiohttp" />
+          <option value="cryptography" />
+          <option value="hydra-core" />
+          <option value="langchain-text-splitters" />
+          <option value="langsmith" />
+          <option value="mcp" />
+          <option value="nltk" />
+          <option value="opentelemetry-instrumentation-aiohttp-client" />
+          <option value="opentelemetry-instrumentation-botocore" />
+          <option value="opentelemetry-instrumentation-fastapi" />
+          <option value="opentelemetry-instrumentation-httpx" />
+          <option value="opentelemetry-instrumentation-jinja2" />
+          <option value="opentelemetry-instrumentation-logging" />
+          <option value="opentelemetry-instrumentation-redis" />
+          <option value="opentelemetry-instrumentation-requests" />
+          <option value="opentelemetry-propagator-b3" />
+          <option value="opentelemetry-propagator-jaeger" />
+          <option value="opentelemetry-propagator-ot-trace" />
+          <option value="pillow" />
+          <option value="pyasn1" />
+          <option value="pyjwt" />
+          <option value="pypdf" />
+          <option value="python-multipart" />
+          <option value="restrictedpython" />
+          <option value="starlette" />
+          <option value="zoom-opentelemetry-distro" />
+          <option value="zoom-opentelemetry-instrumentation-asyncmq-python" />
+          <option value="zoom-opentelemetry-instrumentation-zoom-common-utils-python" />
+          <option value="idna" />
+          <option value="mistune" />
+          <option value="msgpack" />
+          <option value="pympler" />
+          <option value="zoom-common-utils-core" />
+          <option value="zoom-common-utils-utils" />
+          <option value="ray" />
+          <option value="zoom-ml-llms" />
+        </list>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyUnresolvedReferencesInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredIdentifiers">
+        <list>
+          <option value="typing.Coroutine.*" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>

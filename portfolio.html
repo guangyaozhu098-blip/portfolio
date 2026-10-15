@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Live Portfolio Value (CNY)</title>
+<style>
+  body { font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; max-width: 900px; margin: 24px auto; padding: 0 16px; color: #222; }
+  #total { font-size: 48px; font-weight: 600; }
+  #meta { color: #888; margin: 4px 0 16px; }
+  form { display: flex; gap: 8px; margin-bottom: 16px; }
+  dialog { border: 0; border-radius: 8px; padding: 20px; box-shadow: 0 8px 32px rgba(0,0,0,.25); }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  dialog form:last-of-type { margin-bottom: 0; }
+  dialog h3 { margin: 0 0 8px; font-size: 14px; }
+  #fab { position: fixed; right: 24px; bottom: 24px; width: 52px; height: 52px; border-radius: 50%; border: 0;
+         background: #222; color: #fff; font-size: 30px; line-height: 1; padding: 0; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+  input, button { font: inherit; padding: 6px 10px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 8px 6px; border-bottom: 1px solid #eee; text-align: right; }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+  .err { color: #999; }
+  td button { border: 0; background: none; color: #999; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="total">Total: --</div>
+<div id="meta">Loading...</div>
+<dialog id="dlg">
+<h3>Add holding</h3>
+<form id="f">
+  <input id="code" placeholder="Code e.g. 600519 / 510300 / 00700 / AAPL" size="36" required>
+  <input id="shares" type="number" step="any" min="0" placeholder="Shares" required>
+  <button>Add / Update</button>
+</form>
+<h3>Add cash</h3>
+<form id="cf">
+  <input id="cname" placeholder="Cash category e.g. Cash / Housing Fund / Bank Deposit" size="36" required>
+  <input id="camount" type="number" step="any" placeholder="Amount (¥)" required>
+  <button>Add Cash</button>
+</form>
+<button type="button" id="closeDlg">Close</button>
+</dialog>
+<button id="fab" title="Add">+</button>
+<table>
+  <thead><tr><th>Code</th><th>Name</th><th>Shares</th><th>Price (local)</th><th>Value (¥)</th><th>Weight</th><th>Change</th><th></th></tr></thead>
+  <tbody id="body"></tbody>
+</table>
+
+<script>
+const gbk = new TextDecoder('gbk');
+let holdings = JSON.parse(localStorage.getItem('holdings') || '[]');
+let cash = JSON.parse(localStorage.getItem('cash') || '[]'); // [{name, amount}], all in CNY
+
+// input code -> Tencent code
+function resolve(input) {
+  const s = input.trim().toLowerCase();
+  let m;
+  if ((m = s.match(/^(sh|sz|bj)\d{6}$/))) return { key: s, ccy: 'CNY' };
+  if (/^\d{6}$/.test(s)) {
+    const ex = s.startsWith('92') || '48'.includes(s[0]) ? 'bj' : '659'.includes(s[0]) ? 'sh' : 'sz';
+    return { key: ex + s, ccy: 'CNY' };
+  }
+  if ((m = s.match(/^(?:hk)?(\d{1,5})$/))) return { key: 'hk' + m[1].padStart(5, '0'), ccy: 'HKD' };
+  if (/^[a-z][a-z.\-]{0,9}$/.test(s)) return { key: 'us' + s.toUpperCase(), ccy: 'USD' };
+  return null;
+}
+
+async function fetchQuotes(keys) {
+  const res = await fetch('https://qt.gtimg.cn/q=' + keys.join(','));
+  const text = gbk.decode(await res.arrayBuffer());
+  const out = {};
+  for (const m of text.matchAll(/v_([^=]+)="([^"]*)"/g)) out[m[1]] = m[2].split('~');
+  return out;
+}
+
+// Tencent fields: [1] name [3] price [4] prev close [32] change %
+function parse(f) {
+  if (!f || f.length < 33) return null;
+  const price = +f[3] || +f[4];
+  return price > 0 ? { name: f[1], price, pct: +f[32] || 0 } : null;
+}
+
+const money = n => Math.round(n).toLocaleString('en-US');
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+async function refresh() {
+  const infos = holdings.map(h => ({ h, ...resolve(h.code) }));
+  try {
+    const raw = await fetchQuotes([...new Set(infos.map(i => i.key)), 'fxUSDCNY', 'fxHKDCNY']);
+    const fx = { CNY: 1, USD: +raw.fxUSDCNY?.[3] || 0, HKD: +raw.fxHKDCNY?.[3] || 0 };
+    const rows = infos.map(i => {
+      const q = parse(raw[i.key]);
+      return { h: i.h, ccy: i.ccy, q, value: q && fx[i.ccy] ? q.price * fx[i.ccy] * i.h.shares : null };
+    });
+    for (const c of cash) rows.push({ cash: c, value: c.amount });
+    const total = rows.reduce((s, r) => s + (r.value || 0), 0);
+    rows.sort((a, b) => (b.value || 0) - (a.value || 0));
+
+    document.getElementById('total').textContent = Math.round(total).toLocaleString('en-US');
+    document.getElementById('meta').textContent =
+      `USD/CNY ${fx.USD.toFixed(4)}  ·  HKD/CNY ${fx.HKD.toFixed(4)}  ·  Updated  ${new Date().toLocaleTimeString()}`;
+    document.getElementById('body').innerHTML = rows.map(r => {
+      if (r.cash) {
+        return `<tr><td>Cash</td><td>${esc(r.cash.name)}</td><td>-</td><td>-</td><td>${money(r.value)}</td>` +
+          `<td>${total ? (r.value / total * 100).toFixed(1) : 0}%</td><td>-</td>` +
+          `<td><button data-cash="${esc(r.cash.name)}" title="Delete">✕</button></td></tr>`;
+      }
+      const code = esc(r.h.code.toUpperCase());
+      const del = `<td><button data-code="${esc(r.h.code)}" title="Delete">✕</button></td>`;
+      if (!r.q) return `<tr class="err"><td>${code}</td><td colspan="6">Lookup failed, check the code</td>${del}</tr>`;
+      return `<tr><td>${code}</td><td>${esc(r.q.name)}</td><td>${r.h.shares}</td>` +
+        `<td>${r.q.price.toFixed(3)} ${r.ccy}</td><td>${money(r.value)}</td>` +
+        `<td>${total ? (r.value / total * 100).toFixed(1) : 0}%</td>` +
+        `<td>${r.q.pct > 0 ? '+' : ''}${r.q.pct.toFixed(2)}%</td>${del}</tr>`;
+    }).join('');
+  } catch (e) {
+    document.getElementById('meta').textContent = 'Refresh failed: ' + e.message;
+  }
+}
+
+const dlg = document.getElementById('dlg');
+document.getElementById('fab').onclick = () => dlg.showModal();
+document.getElementById('closeDlg').onclick = () => dlg.close();
+dlg.onclick = e => { if (e.target === dlg) dlg.close(); };
+
+document.getElementById('f').onsubmit = e => {
+  e.preventDefault();
+  const code = document.getElementById('code').value.trim();
+  const shares = Number(document.getElementById('shares').value);
+  if (!resolve(code)) return alert('Unrecognized code: ' + code);
+  const i = holdings.findIndex(h => h.code.toLowerCase() === code.toLowerCase());
+  if (i >= 0) holdings[i].shares = shares; else holdings.push({ code, shares });
+  localStorage.setItem('holdings', JSON.stringify(holdings));
+  e.target.reset();
+  dlg.close();
+  refresh();
+};
+
+document.getElementById('cf').onsubmit = e => {
+  e.preventDefault();
+  const name = document.getElementById('cname').value.trim();
+  const amount = Number(document.getElementById('camount').value);
+  const i = cash.findIndex(c => c.name === name);
+  if (i >= 0) cash[i].amount = amount; else cash.push({ name, amount }); // update amount if name exists
+  localStorage.setItem('cash', JSON.stringify(cash));
+  e.target.reset();
+  dlg.close();
+  refresh();
+};
+
+document.getElementById('body').onclick = e => {
+  const { code, cash: cashName } = e.target.dataset;
+  if (cashName !== undefined) {
+    cash = cash.filter(c => c.name !== cashName);
+    localStorage.setItem('cash', JSON.stringify(cash));
+  } else if (code) {
+    holdings = holdings.filter(h => h.code !== code);
+    localStorage.setItem('holdings', JSON.stringify(holdings));
+  } else return;
+  refresh();
+};
+
+refresh();
+</script>
+</body>
+</html>
